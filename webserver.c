@@ -142,13 +142,13 @@ void responce_for_get(int connected_socket, char *filepath, int filesize, int fi
 
     //给客户端发送响应报头
     if(filetype == HTML){
-        sprintf(send_buffer, http_response_head, status_code, filesize, "text/html");
+        sprintf(send_buffer, http_response_head, status_code, filesize, "text/html;charset=utf-8");
     }
     else if(filetype == JPG){
         sprintf(send_buffer, http_response_head, status_code, filesize, "image/jpeg");
     }
     else if(filetype == TXT){
-        sprintf(send_buffer, http_response_head, status_code, filesize, "text/plain");
+        sprintf(send_buffer, http_response_head, status_code, filesize, "text/plain;charset=utf-8");
     }
     write_to_socket(connected_socket, send_buffer, strlen(send_buffer));
 
@@ -167,14 +167,17 @@ void responce_for_post(int connected_socket, int is_valid){
     char *success_str = "<html><body>登录成功</body></html>";
     char *fail_str = "<html><body>登录失败</body></html>";
     char *temp_str;
+    int status_code;
 
     if(is_valid == TRUE){
         temp_str = success_str;
+	status_code = 200;
     }
     else{
         temp_str = fail_str;
+	status_code = 404;
     }
-    sprintf(send_buffer, http_response_head, 200, strlen(temp_str), "text/html;charset=utf-8");
+    sprintf(send_buffer, http_response_head, status_code, strlen(temp_str), "text/html;charset=utf-8");
     sprintf(send_buffer, "%s%s\r\n", send_buffer, temp_str);
     write_to_socket(connected_socket, send_buffer, strlen(send_buffer));
 }
@@ -240,15 +243,29 @@ int parse_requset_head(char *recv_buffer, char *url_buffer){
 }
 
 //将服务器程序的运行路径和请求头中解析出的url拼装成文件路径
-void get_file_path(char *filepath, char *url_buffer){
+void get_file_path(char *filepath, char *url_buffer, int filetype){
     getcwd(filepath, URL_BUFFER_SIZE); //获取服务器当前的工作路径
-    sprintf(filepath, "%s%s", filepath, url_buffer); //将工作路径和请求头中的url组装成文件路径
+    if(filetype == HTML){
+    	sprintf(filepath, "%s%s%s", filepath, "/file/html", strrchr(url_buffer, '/')); //将工作路径和请求头中的url组装成文件路径
+    }
+    else if(filetype == JPG){
+    	sprintf(filepath, "%s%s%s", filepath, "/file/img", strrchr(url_buffer, '/')); //将工作路径和请求头中的url组装成文件路径
+    }
+    else if(filetype == TXT){
+    	sprintf(filepath, "%s%s%s", filepath, "/file/txt", strrchr(url_buffer, '/')); //将工作路径和请求头中的url组装成文件路径
+    }
+    else{
+	sprintf(filepath, "%s%s%s", filepath, "/file", "/");
+    }
 }
 
 //获取文件类型
 int get_file_type(char *url_buffer){
     char *str = strrchr(url_buffer, '.');
 
+    if(str == NULL){
+	return 0;
+    }
     if(strcmp(str + 1, "html") == 0){
         return HTML;
     }
@@ -258,7 +275,9 @@ int get_file_type(char *url_buffer){
     else if(strcmp(str + 1, "txt") == 0){
         return TXT;
     }
-    return 0;
+    else{
+    	return 0;
+    }
 }
 
 int valid_form(char *recv_buffer){
@@ -295,7 +314,8 @@ void *service(void *para){
         receive(connected_socket, recv_buffer); //将收到的数据包写入recv_buffer中
         if(is_http_request(recv_buffer) == TRUE){
             if(parse_requset_head(recv_buffer, url_buffer) == GET){
-                get_file_path(filepath, url_buffer);
+         	filetype = get_file_type(url_buffer);
+                get_file_path(filepath, url_buffer, filetype);
                 ret = stat(filepath, &stat_buffer);
                 if(ret == -1 || S_ISDIR(stat_buffer.st_mode) != 0){
                     printf("%s cannot be found\n", filepath);
@@ -303,7 +323,6 @@ void *service(void *para){
                     status_code = 404;
                 }
                 else{
-                    filetype = get_file_type(url_buffer);
                     status_code = 200;
                 }
                 responce_for_get(connected_socket, filepath, stat_buffer.st_size, filetype, status_code);
@@ -407,3 +426,4 @@ void exit_handler(int sign){
     printf("退出服务器\n");
     exit(0);
 }
+
